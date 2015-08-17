@@ -1,7 +1,7 @@
 # binaries
-bpf
-pcapDump
-
+bpf/bpf
+pcapDump/pcapDump
+testBPFsniffer/testBPFsniffer
 
 # Compiled Object files, Static and Dynamic libs (Shared Objects)
 *.o
