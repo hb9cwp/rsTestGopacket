@@ -147,7 +147,8 @@ func (h *httpStream) run() {
 		} else {
 			bodyBytes := tcpreader.DiscardBytesToEOF(req.Body)
 			req.Body.Close()
-			log.Println("Received request from stream", h.net, h.transport, ":", req, "with", bodyBytes, "bytes in request body")
+			//log.Println("Received request from stream", h.net, h.transport, ":", req, "with", bodyBytes, "bytes in request body")
+			log.Println(h.net, h.transport, req.Method, req.Proto, req.Host, req.URL, bodyBytes)
 		}
 	}
 }
@@ -172,10 +173,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-// XXX to implement
-//	if err := handle.SetBPFFilter(*filter); err != nil {
-//		log.Fatal(err)
-//	}
+	//if err := handle.SetBPFFilter(*filter); err != nil {
+	//	log.Fatal(err)
+	//}
 
 	// from https://github.com/j-keck/arping/blob/master/arping_bsd.go
 	// Note: requires an additional func in
