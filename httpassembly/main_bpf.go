@@ -24,6 +24,7 @@ import (
 	"syscall"
 
 	"github.com/google/gopacket"
+	//"github.com/hb9cwp/gopacket"
 	"github.com/google/gopacket/examples/util"
 	"github.com/google/gopacket/layers"
 	//"github.com/google/gopacket/pcap"
@@ -78,12 +79,13 @@ struct bpf_insn insns[] = {
 var bpfHTTPFilter = []syscall.BpfInsn{
         // if EtherType is IPv4 (at offset (2*6), with VLAN tag (2*6+4))
         *syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_H+syscall.BPF_ABS, 12),
-        *syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 0x0800, 1, 0),
+        *syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 0x0800, 2, 0),
 	// if EtherType is IPv6 (= 0x86DD)
-	// ...
+	*syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 0x86DD, 8, 0),
         // drop it.
         *syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, 0),
-	// if IPProto is TCP
+
+	// if IPProto is TCP over IPv4
         *syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_B+syscall.BPF_ABS, (14+9)),
         *syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 6, 1, 0),
         // drop it.
@@ -93,7 +95,20 @@ var bpfHTTPFilter = []syscall.BpfInsn{
         *syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 80, 1, 0),
         // drop it.
         *syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, 0),
-        // if we passed all the tests, ask for the whole packet.
+        // return the whole packet.
+        *syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, -1),
+
+        // if IPProto is TCP over IPv6
+        *syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_B+syscall.BPF_ABS, (14+6)),
+        *syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 6, 1, 0),
+        // drop it.
+        *syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, 0),
+        // if dst port is 80
+        *syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_H+syscall.BPF_ABS, (14+40+2)),
+        *syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 80, 1, 0),
+        // drop it.
+        *syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, 0),
+        // return the whole packet.
         *syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, -1),
 }
 
@@ -171,7 +186,7 @@ func main() {
         //  return b.fd                
 	// }
 	//bpfFd = int(bpf.Fd())
-	bpfFd := int(handle.Fd())
+	bpfFd := handle.Fd()
 	if bpfFd == -1 {
 		log.Fatal("unable to open /dev/bpfX")
 	}
