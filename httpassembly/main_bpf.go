@@ -28,7 +28,8 @@ import (
 	"github.com/google/gopacket/examples/util"
 	"github.com/google/gopacket/layers"
 	//"github.com/google/gopacket/pcap"
-	"github.com/google/gopacket/bsdbpf"
+	//"github.com/google/gopacket/bsdbpf"
+	"github.com/hb9cwp/gopacket/bsdbpf"
 	"github.com/google/gopacket/tcpassembly"
 	"github.com/google/gopacket/tcpassembly/tcpreader"
 )
@@ -188,12 +189,18 @@ func main() {
 	//bpfFd = int(bpf.Fd())
 	bpfFd := handle.Fd()
 	if bpfFd == -1 {
-		log.Fatal("unable to open /dev/bpfX")
+		log.Fatal("unable to get file descriptor of /dev/bpfX")
 	}
 
 	if err := syscall.SetBpf(bpfFd, bpfHTTPFilter); err != nil {
 		log.Fatal("unable to set filter")
 	}
+/*
+	// Flushes the buffer of incoming packets and resets the statistics
+	if err := syscall.FlushBpf(bpfFd); err != nil {
+		log.Fatal("unable to flush filter")
+	}
+*/
 
 	// Set up assembly
 	streamFactory := &httpStreamFactory{}
@@ -206,6 +213,7 @@ func main() {
 	packetSource := gopacket.NewPacketSource(handle, layers.LayerTypeEthernet)
 	packets := packetSource.Packets()
 	ticker := time.Tick(time.Minute)
+
 	for {
 		select {
 		case packet := <-packets:
