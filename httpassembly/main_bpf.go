@@ -37,11 +37,11 @@ import (
 var iface = flag.String("i", "alc0", "Interface to get packets from")
 var fname = flag.String("r", "", "Filename to read from, overrides -i")
 var snaplen = flag.Int("s", 1600, "SnapLen for pcap packet capture")
-var filter = flag.String("f", "tcp and dst port 80", "BPF filter for pcap")
+//var filter = flag.String("f", "tcp and dst port 80", "BPF filter for pcap")
 var logAllPackets = flag.Bool("v", false, "Logs every packet in great detail")
 
 /*
-var bpfARPFilter = []syscall.BpfInsn{
+var bpfARPFilterProg = []syscall.BpfInsn{
 	// make sure this is an arp packet
 	*syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_H+syscall.BPF_ABS, 12),
 	*syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 0x0806, 0, 1),
@@ -77,7 +77,7 @@ struct bpf_insn insns[] = {
 */
 
 // tcp and dst port 80
-var bpfHTTPFilter = []syscall.BpfInsn{
+var bpfHTTPFilterProg = []syscall.BpfInsn{
         // if EtherType is IPv4 (at offset (2*6), with VLAN tag (2*6+4))
         *syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_H+syscall.BPF_ABS, 12),
         *syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 0x0800, 2, 0),
@@ -159,6 +159,20 @@ func main() {
 	//var handle *pcap.Handle
 	var handle *bsdbpf.BPFSniffer
 	var err error
+	var options = bsdbpf.Options {
+	        BPFDeviceName:    "",
+        	//ReadBufLen:       32767,
+        	ReadBufLen:       0,
+        	Timeout:          nil,
+        	Promisc:          true,
+        	Immediate:        true,
+        	PreserveLinkAddr: true,
+        	//RFilterProgram:   []syscall.BpfInsn{},
+        	RFilterProgram:   bpfHTTPFilterProg,
+        	RFilter:          "",
+        	WFilterProgram:   []syscall.BpfInsn{},
+        	WFilter:          "",
+	}
 
 	// Set up pcap packet capture
 	if *fname != "" {
@@ -168,37 +182,18 @@ func main() {
 	} else {
 		log.Printf("Starting capture on interface %q", *iface)
 		//handle, err = pcap.OpenLive(*iface, int32(*snaplen), true, pcap.BlockForever)
-		handle, err = bsdbpf.NewBPFSniffer(*iface, nil)
+		//handle, err = bsdbpf.NewBPFSniffer(*iface, nil)
+		handle, err = bsdbpf.NewBPFSniffer(*iface, &options)
 	}
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	//if err := handle.SetBPFFilter(*filter); err != nil {
-	//	log.Fatal(err)
-	//}
-
-	// from https://github.com/j-keck/arping/blob/master/arping_bsd.go
-	// Note: requires an additional func in
-	//  https://github.com/google/gopacket/blob/master/bsdbpf/bsd_bpf_sniffer.go
-	// with:
-	// // Fd returns the BPF file descriptor (required for setting BPF filter for ex.)
-	// func (b *BPFSniffer) Fd() int {
-        //  return b.fd                
-	// }
-	//bpfFd = int(bpf.Fd())
-	bpfFd := handle.Fd()
-	if bpfFd == -1 {
-		log.Fatal("unable to get file descriptor of /dev/bpfX")
-	}
-
-	if err := syscall.SetBpf(bpfFd, bpfHTTPFilter); err != nil {
-		log.Fatal("unable to set filter")
-	}
-/*
-	// Flushes the buffer of incoming packets and resets the statistics
-	if err := syscall.FlushBpf(bpfFd); err != nil {
-		log.Fatal("unable to flush filter")
+/* moved into bsdbpf.NewBPFSniffer()
+	//if err := handle.SetBpfReadFilter(*filter); err != nil {
+	if err := handle.SetBpfReadFilterProgram(bpfHTTPFilterProg); err != nil {
+		log.Fatal(err)
 	}
 */
 
