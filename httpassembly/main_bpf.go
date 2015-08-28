@@ -190,6 +190,9 @@ func main() {
 	if err := handle.SetBpfReadFilterProgram(bpfHTTPFilterProg); err != nil {
 		log.Fatal(err)
 	}
+	if err := handle.FlushBpf(); err != nil {
+		log.Fatal(err)
+	}
 
 	// Set up assembly
 	streamFactory := &httpStreamFactory{}
