@@ -36,7 +36,7 @@ import (
 
 var iface = flag.String("i", "alc0", "Interface to get packets from")
 var fname = flag.String("r", "", "Filename to read from, overrides -i")
-var snaplen = flag.Int("s", 1600, "SnapLen for pcap packet capture")
+//var snaplen = flag.Int("s", 1600, "SnapLen for pcap packet capture")
 //var filter = flag.String("f", "tcp and dst port 80", "BPF filter for pcap")
 var logAllPackets = flag.Bool("v", false, "Logs every packet in great detail")
 
@@ -162,16 +162,13 @@ func main() {
 	var options = bsdbpf.Options {
 	        BPFDeviceName:    "",
         	//ReadBufLen:       32767,
-        	ReadBufLen:       0,
-        	Timeout:          nil,
+        	ReadBufLen:       0,	// asks BPF for buffer size (32767 with OpenBSD 5.7)
+	       	//Timeout:          nil,
+        	Timeout:          &syscall.Timeval{Sec:1, Usec:0},
         	Promisc:          true,
-        	Immediate:        true,
+        	//Immediate:      true,
+        	Immediate:        false,
         	PreserveLinkAddr: true,
-        	//RFilterProgram:   []syscall.BpfInsn{},
-        	RFilterProgram:   bpfHTTPFilterProg,
-        	RFilter:          "",
-        	WFilterProgram:   []syscall.BpfInsn{},
-        	WFilter:          "",
 	}
 
 	// Set up pcap packet capture
@@ -189,13 +186,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	//if err := handle.SetBPFFilter(*filter); err != nil {
-/* moved into bsdbpf.NewBPFSniffer()
-	//if err := handle.SetBpfReadFilter(*filter); err != nil {
 	if err := handle.SetBpfReadFilterProgram(bpfHTTPFilterProg); err != nil {
 		log.Fatal(err)
 	}
-*/
 
 	// Set up assembly
 	streamFactory := &httpStreamFactory{}
