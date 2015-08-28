@@ -20,8 +20,8 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"time"
 	"syscall"
+	"time"
 
 	"github.com/google/gopacket"
 	//"github.com/hb9cwp/gopacket"
@@ -29,13 +29,14 @@ import (
 	"github.com/google/gopacket/layers"
 	//"github.com/google/gopacket/pcap"
 	//"github.com/google/gopacket/bsdbpf"
-	"github.com/hb9cwp/gopacket/bsdbpf"
 	"github.com/google/gopacket/tcpassembly"
 	"github.com/google/gopacket/tcpassembly/tcpreader"
+	"github.com/hb9cwp/gopacket/bsdbpf"
 )
 
 var iface = flag.String("i", "alc0", "Interface to get packets from")
 var fname = flag.String("r", "", "Filename to read from, overrides -i")
+
 //var snaplen = flag.Int("s", 1600, "SnapLen for pcap packet capture")
 //var filter = flag.String("f", "tcp and dst port 80", "BPF filter for pcap")
 var logAllPackets = flag.Bool("v", false, "Logs every packet in great detail")
@@ -54,9 +55,9 @@ var bpfARPFilterProg = []syscall.BpfInsn{
 
 /*  BPF filter expressions for TCP from OpenBSD man bpf() page (at the very bottom of the man page)
  http://www.openbsd.org/cgi-bin/man.cgi/OpenBSD-current/man4/bpf.4?query=bpf
- 
+
 ...
-Finally, this filter returns only TCP finger packets. We must parse the IP header to reach the TCP header. The 
+Finally, this filter returns only TCP finger packets. We must parse the IP header to reach the TCP header. The
 BPF_JSET instruction checks that the IP fragment offset is 0 so we are sure that we have a TCP header.
 
 struct bpf_insn insns[] = {
@@ -73,44 +74,44 @@ struct bpf_insn insns[] = {
  BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, 79, 0, 1),
  BPF_STMT(BPF_RET+BPF_K, (u_int)-1),
  BPF_STMT(BPF_RET+BPF_K, 0),
-} 
+}
 */
 
 // tcp and dst port 80
 var bpfHTTPFilterProg = []syscall.BpfInsn{
-        // if EtherType is IPv4 (at offset (2*6), with VLAN tag (2*6+4))
-        *syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_H+syscall.BPF_ABS, 12),
-        *syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 0x0800, 2, 0),
+	// if EtherType is IPv4 (at offset (2*6), with VLAN tag (2*6+4))
+	*syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_H+syscall.BPF_ABS, 12),
+	*syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 0x0800, 2, 0),
 	// if EtherType is IPv6 (= 0x86DD)
 	*syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 0x86DD, 8, 0),
-        // drop it.
-        *syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, 0),
+	// drop it.
+	*syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, 0),
 
 	// if IPProto is TCP over IPv4
-        *syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_B+syscall.BPF_ABS, (14+9)),
-        *syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 6, 1, 0),
-        // drop it.
-        *syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, 0),
+	*syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_B+syscall.BPF_ABS, (14 + 9)),
+	*syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 6, 1, 0),
+	// drop it.
+	*syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, 0),
 	// if dst port is 80
-        *syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_H+syscall.BPF_ABS, (14+20+2)),
-        *syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 80, 1, 0),
-        // drop it.
-        *syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, 0),
-        // return the whole packet.
-        *syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, -1),
+	*syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_H+syscall.BPF_ABS, (14 + 20 + 2)),
+	*syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 80, 1, 0),
+	// drop it.
+	*syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, 0),
+	// return the whole packet.
+	*syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, -1),
 
-        // if IPProto is TCP over IPv6
-        *syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_B+syscall.BPF_ABS, (14+6)),
-        *syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 6, 1, 0),
-        // drop it.
-        *syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, 0),
-        // if dst port is 80
-        *syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_H+syscall.BPF_ABS, (14+40+2)),
-        *syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 80, 1, 0),
-        // drop it.
-        *syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, 0),
-        // return the whole packet.
-        *syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, -1),
+	// if IPProto is TCP over IPv6
+	*syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_B+syscall.BPF_ABS, (14 + 6)),
+	*syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 6, 1, 0),
+	// drop it.
+	*syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, 0),
+	// if dst port is 80
+	*syscall.BpfStmt(syscall.BPF_LD+syscall.BPF_H+syscall.BPF_ABS, (14 + 40 + 2)),
+	*syscall.BpfJump(syscall.BPF_JMP+syscall.BPF_JEQ+syscall.BPF_K, 80, 1, 0),
+	// drop it.
+	*syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, 0),
+	// return the whole packet.
+	*syscall.BpfStmt(syscall.BPF_RET+syscall.BPF_K, -1),
 }
 
 // Build a simple HTTP request parser using tcpassembly.StreamFactory and tcpassembly.Stream interfaces
@@ -159,23 +160,23 @@ func main() {
 	//var handle *pcap.Handle
 	var handle *bsdbpf.BPFSniffer
 	var err error
-	var options = bsdbpf.Options {
-	        BPFDeviceName:    "",
-        	//ReadBufLen:       32767,
-        	ReadBufLen:       0,	// asks BPF for buffer size (32767 with OpenBSD 5.7)
-	       	//Timeout:          nil,
-        	Timeout:          &syscall.Timeval{Sec:1, Usec:0},
-        	Promisc:          true,
-        	//Immediate:      true,
-        	Immediate:        false,
-        	PreserveLinkAddr: true,
+	var options = bsdbpf.Options{
+		BPFDeviceName: "",
+		//ReadBufLen:       32767,
+		ReadBufLen: 0, // asks BPF for buffer size (32768 with OpenBSD 5.7)
+		//Timeout:          nil,
+		Timeout: &syscall.Timeval{Sec: 1, Usec: 0},
+		Promisc: true,
+		//Immediate:      true,
+		Immediate:        false,
+		PreserveLinkAddr: true,
 	}
 
 	// Set up pcap packet capture
 	if *fname != "" {
-		//log.Printf("Reading from pcap dump %q", *fname)
+		log.Printf("Reading from pcap dump %q", *fname)
 		//handle, err = pcap.OpenOffline(*fname)
-		log.Printf("Reading from pcap dump %q not yet implemented on BSD", *fname)
+		log.Fatal("Reading from pcap dump %q not yet implemented on BSD", *fname)
 	} else {
 		log.Printf("Starting capture on interface %q", *iface)
 		//handle, err = pcap.OpenLive(*iface, int32(*snaplen), true, pcap.BlockForever)
